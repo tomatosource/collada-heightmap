@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" 
+          content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  </head>
+  <body>
+    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+    <script src="lib/three.min.js"></script>
+    <script src="lib/ColladaLoader.js"></script>
+    <script src="lib/Detector.js"></script>
+    <script>
+
+      // TODO (gbcowan) get these as arguments from command line
+      var colladaPath = './collada/tonsley.dae';
+      var resolution = 256;
+
+      if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+
+      var scene, dae;
+      var raycaster = new THREE.Raycaster();
+      var loader = new THREE.ColladaLoader();
+      
+      //Load in collada at colladaPath then run, init
+      loader.options.convertUpAxis = true;
+      loader.load(colladaPath, function (collada) {
+        dae = collada.scene;
+        dae.updateMatrix();
+        init();
+      });
+
+      // Add colada to scene, get bounding box, get heightmap, log.
+      function init() {
+        scene = new THREE.Scene();
+        scene.add(dae);
+        var bounds = new THREE.Box3();
+        bounds.setFromObject(dae);
+        var output = getGrid(resolution, bounds);
+       
+        // Send output to python log server.
+        $.ajax({
+            type: 'GET',
+            url: 'http://localhost:5001/',
+            crossDomain: true,
+            data: {msg: JSON.stringify(output)},
+            dataType: 'json',
+          });
+        // All done!
+        document.write("DONE")
+      }
+
+      // Loop over bounds in grid (resxres) returning float[][] of y-vals
+      // and width/height, and top left coord for positioning later on.
+      function getGrid(resolution, bounds) {
+        var grid = [];
+        var zs = [];
+        var direction = new THREE.Vector3( 0, -1, 0 );
+        var width = Math.abs(bounds.max.x - bounds.min.x);
+        var length = Math.abs(bounds.max.z - bounds.min.z);
+        var xStep = width / resolution;
+        var zStep = length / resolution;
+
+        for(var x = bounds.min.x; x <= bounds.max.x; x+= xStep) {
+          zs = [];
+          for(var z = bounds.min.z; z <= bounds.max.z; z+= zStep) {
+            var position = new THREE.Vector3(x, 100, z);
+            raycaster.set(position, direction);
+            var intersects = raycaster.intersectObject( dae, true );
+            if ( intersects.length > 0 ) {
+              zs.push(intersects[ 0 ].point.y);
+            }
+            else zs.push(-1000000);
+          }
+          grid.push(zs);
+        }
+        return {'heightmap': grid, 'width': width, 'length':length, 'x':bounds.min.x, 
+                'z': bounds.min.z};
+      }
+          
+    </script>
+  </body>
+</html>
